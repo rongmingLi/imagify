@@ -126,7 +126,15 @@ declare type CreateUserParams = {
     data?: IImage | null;
     config?: Transformations | null;
   };
-  
+  interface TransformationType {
+    type: string;
+    title: string;
+    subTitle: string;
+    config: {
+        [key: string]: any;
+    };
+    icon: string;
+}
   declare type TransformedImageProps = {
     image: any;
     type: string;
