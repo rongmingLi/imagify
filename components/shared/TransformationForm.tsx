@@ -11,14 +11,23 @@ import {
 import { Input } from "@/components/ui/input"
 import { aspectRatioOptions, defaultValues, transformationTypes } from "@/constants"
 import { CustomField } from "./CustomField"
-import { Select } from "../ui/select"
-import { SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { useState, useTransition } from "react"
 import { AspectRatioKey, debounce, deepMergeObjects } from "@/lib/utils"
 import { Button } from "../ui/button"
 import { set } from "mongoose"
 import { updateCredits } from "@/lib/actions/user.actions"
 import MediaUploader from "./MediaUploader"
+import TransformedImage from "./TransformedImage"
+import { getCldImageUrl } from "next-cloudinary"
+import { addImage, updateImage } from "@/lib/actions/image.actions"
+import { useRouter } from "next/navigation"
 export const formSchema = z.object({
   title: z.string(),
   aspectRatio: z.string().optional(),
@@ -49,24 +58,92 @@ const TransformationForm = ({ action, data = null, userId, type, creditBalance,c
     resolver: zodResolver(formSchema),
     defaultValues: initialValues,
   })
+  const router = useRouter()
 const [isPending,startTransition] = useTransition()
   // 2. Define a submit handler.
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     // Do something with the form values.
     // ✅ This will be type-safe and validated.
     console.log(values)
+    console.log('onSubmit--->data',data)
+    console.log('onSubmit--->image',image)
+    setIsSubmitting(true)
+    if(data || image){
+      const transformationUrl = getCldImageUrl({
+        width: image?.width,
+        height: image?.height,
+        src:image?.publicId,
+        ...transformationConfig
+      })
+
+
+
+
+
+      const imageData = {
+        title: values.title,
+        publicId: image?.publicId,
+        transformationType: type,
+        width: image?.width,
+        height: image?.height,
+        config: transformationConfig,
+        secureURL: image?.secureURL,
+        transformationURL:transformationUrl,
+        aspectRatio: values.aspectRatio,
+        color: values.color,
+        prompt: values.prompt,
+      }
+
+      if(action === 'Add'){
+        try {
+          const newImage = await addImage({
+            image:imageData,
+            userId,
+            path:'/',
+          })
+          if(newImage){
+            form.reset()
+            setImage(data)
+
+            router.push(`/transformations/${newImage._id}`)
+          }
+        } catch (error) {
+          console.log(error,"<----on Save Image Add erro")
+        }
+      }
+      if(action === 'Update'){
+        try {
+          const updatedImage = await updateImage({
+            image:{
+              ...imageData,
+              _id:data._id
+            },
+            userId,
+            path:'/',
+          })
+          if(updatedImage){
+          console.log("router.push(`/transformations/${updatedImage.id}`)",updatedImage)
+            router.push(`/transformations/${updatedImage._id}`)
+          }
+        } catch (error) {
+          console.log(error,"<----on Save Image update erro")
+        }
+      }
+    }
   }
 
   const onSelectFieldHandler = (value: string, onChangeField: (value: string) => void) => {
     console.log("value on SelectFieldHandler", value)
     const imageSize = aspectRatioOptions[value as AspectRatioKey]
-
+    
+    setNewTransformation(transformationType.config);
     setImage((prevState:any) => ({
       ...prevState,
      aspectRatio: imageSize.aspectRatio,
      width: imageSize.width,
      height: imageSize.height
     }))
+    return onChangeField(value)
   }
   const onInputChangeHandler = (fieldName: string, value: string, type: string, onChangeField: (value: string) => void) => {
     debounce(() => {
@@ -77,8 +154,9 @@ const [isPending,startTransition] = useTransition()
           [fieldName === 'prompt' ? 'prompt' : 'to']: value
         }
       }))
-      return onChangeField(value)
+      
     }, 1000)
+    return onChangeField(value)
   }
   const onTransformHandler = async() => {
     console.log("Transforming...")
@@ -179,6 +257,14 @@ const [isPending,startTransition] = useTransition()
                 type={type}
                 />
             )}
+          />
+          <TransformedImage 
+            image={image}
+            type={type}
+            title={form.getValues().title}
+            isTransforming={isTransforming}
+            setIsTransforming={setIsTransforming}
+            transformationConfig={transformationConfig}
           />
         </div>
         <div className="flex flex-col gap-4">
